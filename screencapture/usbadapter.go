@@ -2,7 +2,6 @@ package screencapture
 
 import (
 	"errors"
-
 	"github.com/google/gousb"
 	log "github.com/sirupsen/logrus"
 )
@@ -22,31 +21,17 @@ func (usa UsbAdapter) WriteDataToUsb(bytes []byte) {
 
 //StartReading claims the AV Quicktime USB Bulk endpoints and starts reading until a stopSignal is sent.
 //Every received data is added to a frameextractor and when it is complete, sent to the UsbDataReceiver.
-func (usa *UsbAdapter) StartReading(device IosDevice, receiver UsbDataReceiver, stopSignal chan interface{}) error {
-	ctx, cleanUp := createContext()
-	defer cleanUp()
-
-	usbDevice, err := ctx.OpenDeviceWithVIDPID(device.VID, device.PID)
-	if err != nil {
-		return err
-	}
-	if !device.IsActivated() {
-		return errors.New("device not activated for screen mirroring")
-	}
-	confignum, _ := usbDevice.ActiveConfigNum()
-
-	log.Debugf("Config is active: %d", confignum)
-
-	config, err := usbDevice.Config(confignum)
+func (usa *UsbAdapter) StartReading(usbDevice *gousb.Device, receiver UsbDataReceiver, stopSignal chan interface{}) error {
+  var confignum int = 6
+  
+  config, err := usbDevice.Config(confignum)
 	if err != nil {
 		return errors.New("Could not retrieve config")
 	}
 
-	sendQTConfigControlRequest(usbDevice)
-
 	log.Debugf("QT Config is active: %s", config.String())
-
-	val, err := usbDevice.Control(0x02, 0x01, 0, 0x86, make([]byte, 0))
+	
+	/*val, err := usbDevice.Control(0x02, 0x01, 0, 0x86, make([]byte, 0))
 	if err != nil {
 		log.Debug("failed control", err)
 	}
@@ -56,7 +41,7 @@ func (usa *UsbAdapter) StartReading(device IosDevice, receiver UsbDataReceiver, 
 	if err != nil {
 		log.Debug("failed control", err)
 	}
-	log.Debugf("Clear Feature RC: %d", val)
+	log.Debugf("Clear Feature RC: %d", val)*/
 
 	iface, err := grabQuickTimeInterface(config)
 	if err != nil {
@@ -94,7 +79,8 @@ func (usa *UsbAdapter) StartReading(device IosDevice, receiver UsbDataReceiver, 
 		return err
 	}
 	log.Debug("Endpoint claimed")
-	log.Infof("Device '%s' USB connection ready", device.SerialNumber)
+	udid, _ := usbDevice.SerialNumber()
+	log.Infof("Device '%s' USB connection ready", udid )
 	go func() {
 
 		frameExtractor := NewLengthFieldBasedFrameExtractor()
@@ -123,7 +109,10 @@ func (usa *UsbAdapter) StartReading(device IosDevice, receiver UsbDataReceiver, 
 	}
 	log.Info("Closing usb interface")
 	iface.Close()
-
+	
+	log.Info("Closing config")
+	config.Close()
+	
 	sendQTDisableConfigControlRequest(usbDevice)
 
 	return nil
